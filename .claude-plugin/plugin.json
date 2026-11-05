@@ -5,7 +5,7 @@
   "license": "MIT",
   "homepage": "https://github.com/notapro/unity-worktrees",
   "repository": "https://github.com/notapro/unity-worktrees",
-  "author": { "name": "Prakhar" },
+  "author": { "name": "notapro", "url": "https://github.com/notapro" },
   "icon": "./.claude-plugin/icon.png",
   "keywords": ["unity", "git-worktree", "parallel-agents", "claude-code-plugin", "worktree", "unity3d", "gamedev"]
 }
