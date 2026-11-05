@@ -1,7 +1,10 @@
 {
   "name": "unity-worktrees",
   "description": "Fast, safe git worktrees for Unity projects: clones Library, seeds uncommitted Packages/ProjectSettings edits, and guards removal while an editor is open.",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "license": "MIT",
+  "homepage": "https://github.com/notapro/unity-worktrees",
+  "repository": "https://github.com/notapro/unity-worktrees",
   "author": { "name": "Prakhar" },
   "keywords": ["unity", "git-worktree", "parallel-agents"]
 }
