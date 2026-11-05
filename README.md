@@ -18,7 +18,7 @@ Claude Code plugin for git worktrees of Unity projects. A plain `git worktree ad
 ## Install
 
 ```
-claude plugin marketplace add ~/workspace/agentic_workflows/unity-worktrees
+claude plugin marketplace add notapro/unity-worktrees
 claude plugin install unity-worktrees@agentic-workflows
 ```
 
@@ -31,5 +31,9 @@ other tools can use a path that survives plugin version bumps.
   Library; run `seed-worktree.sh` yourself.
 - Cloning a `Library/` while its editor is open is untested: `new-worktree.sh` refuses unless
   `--force`; the SessionStart hook only warns.
-- macOS tested only.
+- Verified on macOS only for now (the APFS clone is macOS-specific; other platforms are untested).
 - Orca users: see [docs/orca.md](docs/orca.md) for the optional removal guard.
+
+## License
+
+[MIT](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for release notes.
