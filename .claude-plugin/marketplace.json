@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agentic-workflows",
+  "description": "Personal agentic workflow plugins.",
+  "owner": { "name": "Prakhar" },
+  "plugins": [
+    {
+      "name": "unity-worktrees",
+      "description": "Fast, safe git worktrees for Unity projects.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

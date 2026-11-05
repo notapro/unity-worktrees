@@ -1,0 +1,7 @@
+{
+  "name": "unity-worktrees",
+  "description": "Fast, safe git worktrees for Unity projects: clones Library, seeds uncommitted Packages/ProjectSettings edits, and guards removal while an editor is open.",
+  "version": "0.1.0",
+  "author": { "name": "Prakhar" },
+  "keywords": ["unity", "git-worktree", "parallel-agents"]
+}

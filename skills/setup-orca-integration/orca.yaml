@@ -1,0 +1,14 @@
+# Orca hooks from the unity-worktrees Claude Code plugin.
+# Paths use ~/.claude/unity-worktrees, a symlink the plugin's SessionStart hook keeps pointing at
+# the installed plugin. Each hook is skipped on machines without the plugin.
+scripts:
+  # Clone Library and seed Packages/ProjectSettings into the new worktree.
+  setup: |
+    S=~/.claude/unity-worktrees/skills/new-unity-worktree/seed-worktree.sh
+    if [ -x "$S" ]; then "$S"; fi
+  # Refuse to archive/remove a worktree while a Unity editor has it open.
+  archive: |
+    S=~/.claude/unity-worktrees/skills/remove-unity-worktree/check-removable.sh
+    if [ -x "$S" ]; then "$S"; fi
+# Hold the agent until the Library clone finishes.
+setupAgentStartupPolicy: wait-for-setup
