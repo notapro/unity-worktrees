@@ -6,5 +6,6 @@
   "homepage": "https://github.com/notapro/unity-worktrees",
   "repository": "https://github.com/notapro/unity-worktrees",
   "author": { "name": "Prakhar" },
-  "keywords": ["unity", "git-worktree", "parallel-agents"]
+  "icon": "./.claude-plugin/icon.png",
+  "keywords": ["unity", "git-worktree", "parallel-agents", "claude-code-plugin", "worktree", "unity3d", "gamedev"]
 }
