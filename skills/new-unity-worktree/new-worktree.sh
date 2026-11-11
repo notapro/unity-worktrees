@@ -25,7 +25,15 @@ if [ "$force" = 0 ] && [ -n "$(lsof -t "$src/Temp/UnityLockfile" 2>/dev/null || 
   exit 2
 fi
 
-git -C "$src" worktree add -b "$name" "$dst" "$base"
+if command -v unity >/dev/null; then
+  # Branching here refuses an existing branch and supplies the --base the Unity CLI lacks.
+  git -C "$src" branch "$name" "$base"
+  # --seed full keeps PackageCache: first open measured ~2x faster than the default cache seed.
+  unity vcs git worktree add "$name" "$src" --into "$dst" --seed full --non-interactive --no-banner --quiet \
+    || { rc=$?; git -C "$src" branch -D "$name" >/dev/null; exit "$rc"; }
+else
+  git -C "$src" worktree add -b "$name" "$dst" "$base"
+fi
 "$(dirname "$0")/seed-worktree.sh" "$dst" "$src"
 
 echo "WORKTREE=$dst"

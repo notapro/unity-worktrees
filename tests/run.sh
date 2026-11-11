@@ -89,6 +89,39 @@ test_seed_drops_session_files() {
   [ -f "$L/Artifacts/y" ]
 }
 
+# --- Task 2 ---
+
+new_worktree_common() {
+  make_fixture
+  echo '{"dependencies":{"x":"1"}}' > "$P/Packages/manifest.json"
+  echo probe > "$P/ProjectSettings/Probe.asset"
+  out=$(cd "$P" && "$NEW" w1)
+  W="$T/fake proj-w1"
+  [ "$(echo "$out" | tail -2)" = "WORKTREE=$W
+BRANCH=w1" ]
+  [ "$(git -C "$W" branch --show-current)" = w1 ]
+  [ -f "$W/Library/PackageCache/p/x" ]
+  [ ! -e "$W/Library/ilpp.pid" ]
+  cmp "$P/Packages/manifest.json" "$W/Packages/manifest.json"
+  cmp "$P/ProjectSettings/Probe.asset" "$W/ProjectSettings/Probe.asset"
+}
+test_new_with_unity() { new_worktree_common; hub_has "$W"; }
+test_new_without_unity() { no_unity new_worktree_common; }
+
+test_new_base_ref() {
+  make_fixture
+  echo b > "$P/Assets/b.txt"; git -C "$P" add -A; git -C "$P" commit -qm second
+  (cd "$P" && "$NEW" w2 --base HEAD~1)
+  [ "$(git -C "$T/fake proj-w2" rev-parse HEAD)" = "$(git -C "$P" rev-parse HEAD~1)" ]
+}
+
+test_new_existing_branch_refused() {
+  make_fixture
+  git -C "$P" branch w3
+  refute bash -c 'cd "$1" && "$2" w3' _ "$P" "$NEW"
+  [ ! -e "$T/fake proj-w3" ]
+}
+
 tests=${1:-$(declare -F | awk '$3 ~ /^test_/ {print $3}')}
 for t in $tests; do run_test "$t"; done
 exit $failed
