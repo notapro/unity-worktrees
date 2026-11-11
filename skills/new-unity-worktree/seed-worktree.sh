@@ -42,8 +42,9 @@ elif [ -d "$src/Library" ]; then
   cp -cR "$src/Library" "$tmp" 2>/dev/null \
     || { rm -rf "$tmp"; cp -R --reflink=auto "$src/Library" "$tmp" 2>/dev/null; } \
     || { rm -rf "$tmp"; cp -R "$src/Library" "$tmp"; }
-  # Pipeline/ holds the source editor's port, pid and token; a stale copy can misroute the CLI.
-  rm -rf "$tmp/Pipeline" "$tmp/Temp"
+  # These belong to the source editor's session (Pipeline/ holds its port, pid and token);
+  # a stale copy can misroute the CLI or look like a live editor.
+  rm -rf "$tmp/Pipeline" "$tmp/Temp" "$tmp/ilpp.pid" "$tmp"/*-lock
   mv "$tmp" "$dst/Library"
 else
   echo "warning: no Library in $src; first open will do a full import" >&2
