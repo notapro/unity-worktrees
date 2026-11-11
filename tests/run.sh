@@ -122,6 +122,59 @@ test_new_existing_branch_refused() {
   [ ! -e "$T/fake proj-w3" ]
 }
 
+# --- Task 3 ---
+
+remove_seeded_common() {
+  make_fixture
+  echo '{"dependencies":{"x":"1"}}' > "$P/Packages/manifest.json"
+  (cd "$P" && "$NEW" r1)
+  W="$T/fake proj-r1"
+  out=$(cd "$P" && "$REMOVE" r1)
+  [ "$(echo "$out" | tail -1)" = "removed $W and branch r1" ]
+  [ ! -e "$W" ]
+  refute git -C "$P" rev-parse -q --verify refs/heads/r1
+}
+test_remove_seeded_only() { remove_seeded_common; refute hub_has "$W"; }
+test_remove_without_unity() { no_unity remove_seeded_common; }
+
+test_remove_real_edit_refused() {
+  make_fixture
+  (cd "$P" && "$NEW" r2)
+  echo n > "$T/fake proj-r2/Assets/new.txt"
+  set +e; (cd "$P" && "$REMOVE" r2); rc=$?; set -e
+  [ "$rc" = 2 ]
+  [ -d "$T/fake proj-r2" ]
+  git -C "$P" rev-parse -q --verify refs/heads/r2
+}
+
+test_remove_unmerged_refused() {
+  make_fixture
+  (cd "$P" && "$NEW" r3)
+  echo c > "$T/fake proj-r3/Assets/c.txt"
+  git -C "$T/fake proj-r3" add Assets/c.txt; git -C "$T/fake proj-r3" commit -qm c
+  set +e; (cd "$P" && "$REMOVE" r3); rc=$?; set -e
+  [ "$rc" = 2 ]
+  (cd "$P" && "$REMOVE" r3 --force)
+  refute git -C "$P" rev-parse -q --verify refs/heads/r3
+}
+
+test_remove_plain_worktree() {
+  make_fixture
+  git -C "$P" worktree add -q "$T/fake proj-r4" -b r4
+  (cd "$P" && "$REMOVE" r4)
+  [ ! -e "$T/fake proj-r4" ]
+}
+
+test_remove_locked() {
+  make_fixture
+  W="$P/.claude/worktrees/r5"
+  git -C "$P" worktree add -q "$W" -b worktree-r5
+  git -C "$P" worktree lock "$W"
+  (cd "$P" && "$REMOVE" r5)
+  [ ! -e "$W" ]
+  refute git -C "$P" rev-parse -q --verify refs/heads/worktree-r5
+}
+
 tests=${1:-$(declare -F | awk '$3 ~ /^test_/ {print $3}')}
 for t in $tests; do run_test "$t"; done
 exit $failed

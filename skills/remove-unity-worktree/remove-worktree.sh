@@ -60,7 +60,14 @@ if [ "$force" = 0 ]; then
   fi
 fi
 
-git -C "$main" worktree remove --force "$wt"
+# Claude Code locks the worktrees it creates.
+git -C "$main" worktree unlock "$wt" 2>/dev/null || true
+if command -v unity >/dev/null; then
+  # --discard-changes is safe: the checks above already refused real uncommitted work.
+  (cd "$main" && unity vcs git worktree remove "$wt" --discard-changes -y --non-interactive --no-banner --quiet)
+else
+  git -C "$main" worktree remove --force "$wt"
+fi
 git -C "$main" worktree prune
 if [ -n "$br" ]; then
   if [ "$force" = 1 ]; then git -C "$main" branch -D "$br"; else git -C "$main" branch -d "$br"; fi
