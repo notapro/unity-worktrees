@@ -5,11 +5,11 @@
 # checkout or worktrees made outside Claude. Only a failed ExitWorktree close blocks (exit 2).
 exec >&2
 # \x1f, not tab: read collapses runs of whitespace separators, dropping empty fields.
-IFS=$'\x1f' read -r event cwd agent action < <(python3 -c '
+IFS=$'\x1f' read -r event cwd agent action reason < <(python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 print("\x1f".join([d.get("hook_event_name", ""), d.get("cwd", ""), d.get("agent_id", ""),
-                 (d.get("tool_input") or {}).get("action", "")]))')
+                 (d.get("tool_input") or {}).get("action", ""), d.get("reason", "")]))')
 close="${CLAUDE_PLUGIN_ROOT:?}/skills/remove-unity-worktree/close-editor.sh"
 
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || exit 0
@@ -27,6 +27,8 @@ case $event in
       exit 2
     fi;;
   SessionEnd)
+    # /clear also ends a session, but work goes on in the same worktree.
+    [ "$reason" != clear ] || exit 0
     # Claude cancels SessionEnd hooks within seconds; let the close outlive this hook.
     nohup "$close" "$root" >/dev/null 2>&1 &;;
 esac

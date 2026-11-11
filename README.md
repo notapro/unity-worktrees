@@ -41,8 +41,11 @@ other tools can use a path that survives plugin version bumps.
   Library; run `seed-worktree.sh` yourself.
 - Cloning a `Library/` while its editor is open is untested: `new-worktree.sh` refuses unless
   `--force`; the seeding hook only warns.
-- If saving fails, the editor is left open: `ExitWorktree` removal is refused, and a subagent or
-  session end only warns. Editors on worktrees made outside Claude must be closed by whoever
+- If saving fails (for example the editor is still loading or shows a modal dialog), the editor is
+  left open: `ExitWorktree` removal is refused, but a subagent or session end cannot be held, and
+  Claude may then delete a subagent's worktree under the running editor. Close it with
+  `unity close <path>` (discards unsaved work).
+- `SessionEnd` from `/clear` is ignored, so the editor stays open while the session continues. Editors on worktrees made outside Claude must be closed by whoever
   opened them.
 - `SubagentStart` cannot hold a subagent, so its first command may wait on the seeding lock.
 - Verified on macOS only for now (the APFS clone is macOS-specific; other platforms are untested).

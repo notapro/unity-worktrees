@@ -368,6 +368,28 @@ test_session_end_claude_worktree() {
   wait_released "$W"
 }
 
+# SessionEnd also fires on /clear, where the session goes on in the same worktree.
+test_session_end_clear_ignored() {
+  make_fixture; claude_wt s2; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "SessionEnd", "reason": "clear"'
+  sleep 1
+  editor_held "$W"
+  [ -z "$(unity_log)" ]
+}
+
+# The hook must outlive close-editor.sh's worst case (save + 30 s `unity close` + 90 s poll),
+# or Claude kills it and ExitWorktree removes the worktree under a running editor.
+test_close_hook_timeout_covers_close() {
+  python3 - "$here/hooks/hooks.json" <<'EOF'
+import json, sys
+for groups in json.load(open(sys.argv[1]))["hooks"].values():
+    for g in groups:
+        for h in g["hooks"]:
+            if "close-agent-editor" in h["command"]:
+                assert h["timeout"] >= 180, h
+EOF
+}
+
 test_session_end_main_checkout() {
   make_fixture; hold_editor "$P"; fake_unity
   agent_hook "$P" '"hook_event_name": "SessionEnd", "reason": "other"'
