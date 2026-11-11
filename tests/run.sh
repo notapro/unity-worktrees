@@ -175,6 +175,90 @@ test_remove_locked() {
   refute git -C "$P" rev-parse -q --verify refs/heads/worktree-r5
 }
 
+# --- Task 4 ---
+
+# run_hook <script> <cwd> [extra-json]: hook stdout goes to $T/hook.out. HOME is faked so the
+# hook's stable-path symlink never touches the real ~/.claude.
+run_hook() {
+  mkdir -p "$T/home/.claude"
+  (cd "$2" && hook_json "$2" "${3:-}" | HOME="$T/home" CLAUDE_PLUGIN_ROOT="$here" "$here/hooks/$1") > "$T/hook.out"
+}
+seed_hook() { run_hook seed-if-needed.sh "$@"; }
+
+claude_wt() { W="$P/.claude/worktrees/$1"; git -C "$P" worktree add -q "$W" -b "worktree-$1"; }
+
+test_seed_hook_seeds_linked_worktree() {
+  make_fixture; claude_wt h1
+  seed_hook "$W"
+  [ ! -s "$T/hook.out" ]
+  [ -f "$W/Library/PackageCache/p/x" ]
+}
+
+test_seed_hook_from_subdir() {
+  make_fixture; claude_wt h2
+  seed_hook "$W/Assets"
+  [ -f "$W/Library/PackageCache/p/x" ]
+  [ ! -e "$W/Assets/Library" ]
+}
+
+# Average of 5 runs must stay under 0.2 s: this hook runs before every Bash call.
+assert_fast_noop() {
+  local t0 t1
+  t0=$(date +%s%N)
+  for _ in 1 2 3 4 5; do seed_hook "$1"; [ ! -s "$T/hook.out" ]; done
+  t1=$(date +%s%N)
+  echo "avg $(( (t1 - t0) / 5000000 )) ms"
+  [ $(( (t1 - t0) / 5 )) -lt 200000000 ]
+}
+test_seed_hook_noop_main() {
+  make_fixture
+  assert_fast_noop "$P"
+  [ -f "$P/Library/ilpp.pid" ]
+}
+test_seed_hook_noop_plain_repo() {
+  make_fixture plain
+  git -C "$P" worktree add -q "$T/fake proj-p" -b p
+  assert_fast_noop "$T/fake proj-p"
+  [ ! -e "$T/fake proj-p/Library" ]
+}
+test_seed_hook_noop_seeded() {
+  make_fixture; claude_wt h3
+  "$SEED" "$W" "$P" >/dev/null
+  echo marker > "$W/Library/marker"
+  assert_fast_noop "$W"
+  [ -f "$W/Library/marker" ]
+}
+
+test_seed_hook_concurrent() {
+  make_fixture; claude_wt h4
+  (cd "$W" && hook_json "$W" | HOME="$T/home" CLAUDE_PLUGIN_ROOT="$here" "$here/hooks/seed-if-needed.sh") & a=$!
+  (cd "$W" && hook_json "$W" | HOME="$T/home" CLAUDE_PLUGIN_ROOT="$here" "$here/hooks/seed-if-needed.sh") & b=$!
+  wait $a
+  wait $b
+  [ -f "$W/Library/PackageCache/p/x" ]
+  [ -f "$W/Library/Artifacts/y" ]
+  [ ! -e "$W/Library.seeding" ]
+  [ ! -e "$W/Library/Library.seeding" ]
+}
+
+test_seed_hook_failure_never_blocks() {
+  make_fixture; claude_wt h5
+  chmod 000 "$P/Library/Artifacts/y"
+  (cd "$W" && hook_json "$W" | HOME="$T/home" CLAUDE_PLUGIN_ROOT="$here" "$here/hooks/seed-if-needed.sh") \
+    > "$T/hook.out" 2> "$T/hook.err"
+  chmod 644 "$P/Library/Artifacts/y"
+  cat "$T/hook.err"
+  [ ! -s "$T/hook.out" ]
+  [ -s "$T/hook.err" ]
+  [ ! -e "$W/Library.seeding" ]
+}
+
+test_seed_hook_ignores_project_dir() {
+  make_fixture; claude_wt h6
+  CLAUDE_PROJECT_DIR="$P" seed_hook "$W"
+  [ -f "$W/Library/PackageCache/p/x" ]
+}
+
 tests=${1:-$(declare -F | awk '$3 ~ /^test_/ {print $3}')}
 for t in $tests; do run_test "$t"; done
 exit $failed

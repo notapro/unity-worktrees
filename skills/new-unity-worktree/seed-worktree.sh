@@ -17,7 +17,23 @@ if [ -n "$(lsof -t "$src/Temp/UnityLockfile" 2>/dev/null || true)" ]; then
   echo "warning: editor is open on $src; cloning its live Library (untested, Unity reimports if inconsistent)" >&2
 fi
 
-seeded="$(git -C "$dst" rev-parse --absolute-git-dir)/unity-seeded"
+gitdir=$(git -C "$dst" rev-parse --absolute-git-dir)
+# The Bash backstop hook and SubagentStart can fire together; one seeder at a time.
+lock="$gitdir/unity-seeding.lock"
+tmp="$dst/Library.seeding"
+waited=0
+until mkdir "$lock" 2>/dev/null; do
+  if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+    echo "removing stale seeding lock $lock" >&2; rm -rf "$lock"; continue
+  fi
+  [ "$waited" -lt 120 ] || { echo "timed out waiting for another seeder ($lock)" >&2; exit 1; }
+  waited=$((waited + 1)); sleep 1
+done
+trap 'rm -rf "$tmp"; rmdir "$lock" 2>/dev/null' EXIT
+# The seeder we waited for finished the job.
+[ "$waited" = 0 ] || [ ! -e "$dst/Library" ] || exit 0
+
+seeded="$gitdir/unity-seeded"
 : > "$seeded"
 # Overlaying the source's uncommitted manifest onto a different base commit could break the project.
 if git -C "$src" diff --quiet HEAD "$(git -C "$dst" rev-parse HEAD)" -- Packages ProjectSettings; then
@@ -37,7 +53,6 @@ elif [ -d "$src/Library" ]; then
   # APFS clone is ~4s and ~free for a 6.7 GB Library; fall back to reflink, then a plain copy.
   # Clone beside the target and rename at the end, so an interrupted copy or a second seeder
   # never leaves a half-filled Library that Unity would trust.
-  tmp="$dst/Library.seeding"
   rm -rf "$tmp"
   cp -cR "$src/Library" "$tmp" 2>/dev/null \
     || { rm -rf "$tmp"; cp -R --reflink=auto "$src/Library" "$tmp" 2>/dev/null; } \
