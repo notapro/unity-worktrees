@@ -32,13 +32,7 @@ if ! "$(dirname "$0")/check-removable.sh" "$wt" 2>/dev/null; then
     echo "Unity editor is open on $wt. Close it (saving first), or pass --force to close it via the CLI." >&2
     exit 2
   fi
-  unity command eval --project-path "$wt" --caller agent --skill unity-cli --result-only \
-    'UnityEditor.EditorApplication.Exit(0); return 0;' >/dev/null 2>&1 || true
-  for _ in $(seq 1 30); do
-    [ -z "$(lsof -t "$wt/Temp/UnityLockfile" 2>/dev/null || true)" ] && break
-    sleep 3
-  done
-  [ -z "$(lsof -t "$wt/Temp/UnityLockfile" 2>/dev/null || true)" ] || { echo "editor on $wt did not exit" >&2; exit 2; }
+  "$(dirname "$0")/close-editor.sh" "$wt" || exit 2
 fi
 
 if [ "$force" = 0 ]; then

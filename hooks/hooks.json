@@ -49,6 +49,41 @@
             "timeout": 300
           }
         ]
+      },
+      {
+        "matcher": "ExitWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/close-agent-editor.sh\"",
+            "shell": "bash",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/close-agent-editor.sh\"",
+            "shell": "bash",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/close-agent-editor.sh\"",
+            "shell": "bash",
+            "timeout": 120
+          }
+        ]
       }
     ]
   }

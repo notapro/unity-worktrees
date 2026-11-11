@@ -259,6 +259,133 @@ test_seed_hook_ignores_project_dir() {
   [ -f "$W/Library/PackageCache/p/x" ]
 }
 
+# --- Task 5 ---
+# Probed on Claude Code 2.1.322: SubagentStop's cwd is the subagent's isolated worktree
+# (.claude/worktrees/agent-<agent_id>, still present); ExitWorktree's tool_input is
+# {"action": "remove"}; SessionEnd's cwd is a --worktree session's worktree, still present,
+# but SessionEnd hooks are cancelled within seconds, so close-agent-editor.sh starts the
+# close in the background (nohup) there and the tests poll for it.
+
+CLOSE="$here/skills/remove-unity-worktree/close-editor.sh"
+
+# fake_unity [save-fails]: stub `unity` that logs its args; other subcommands go to the real CLI.
+fake_unity() {
+  local real; real=$(command -v unity || true)
+  mkdir -p "$T/bin"
+  cat > "$T/bin/unity" <<EOF
+#!/bin/bash
+echo "\$*" >> "$T/unity.log"
+case "\$1 \$2" in
+  "command eval") [ "${1:-}" != save-fails ];;
+  close*) kill "\$(cat "$T/editor.pid")" 2>/dev/null; rm -f "$T/editor.pid";;
+  *) [ -n "$real" ] && exec "$real" "\$@";;
+esac
+EOF
+  chmod +x "$T/bin/unity"
+  export PATH="$T/bin:$PATH"
+}
+unity_log() { cat "$T/unity.log" 2>/dev/null || true; }
+wait_released() { for _ in $(seq 1 50); do editor_held "$1" || return 0; sleep 0.2; done; return 1; }
+
+test_close_editor_saves_then_closes() {
+  make_fixture; claude_wt c1; hold_editor "$W"; fake_unity
+  "$CLOSE" "$W"
+  unity_log
+  [ "$(unity_log | sed -n 1p | grep -F "$W" | cut -d' ' -f1-2)" = "command eval" ]
+  [ "$(unity_log | sed -n 2p)" = "close $W --non-interactive --no-banner" ]
+  refute editor_held "$W"
+}
+
+test_close_editor_save_fails_keeps_open() {
+  make_fixture; claude_wt c2; hold_editor "$W"; fake_unity save-fails
+  refute "$CLOSE" "$W"
+  refute grep -q '^close' "$T/unity.log"
+  editor_held "$W"
+}
+
+test_close_editor_no_editor() {
+  make_fixture; claude_wt c3; fake_unity
+  "$CLOSE" "$W"
+  [ -z "$(unity_log)" ]
+}
+
+test_remove_force_closes_editor() {
+  make_fixture
+  git -C "$P" worktree add -q "$T/fake proj-r6" -b r6
+  hold_editor "$T/fake proj-r6"; fake_unity
+  (cd "$P" && "$REMOVE" r6 --force)
+  unity_log | grep -n -e '^command eval' -e '^close' > "$T/order"
+  [ "$(cut -d: -f2 "$T/order" | cut -d' ' -f1)" = "command
+close" ]
+  [ ! -e "$T/fake proj-r6" ]
+}
+
+agent_hook() { run_hook close-agent-editor.sh "$@"; }
+
+test_subagent_stop_own_worktree() {
+  make_fixture; claude_wt agent-abc; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "SubagentStop", "agent_id": "abc"'
+  [ ! -s "$T/hook.out" ]
+  refute editor_held "$W"
+}
+
+test_subagent_stop_shared_worktree() {
+  make_fixture; claude_wt t1; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "SubagentStop", "agent_id": "abc"'
+  editor_held "$W"
+  release_editor; hold_editor "$P"
+  agent_hook "$P" '"hook_event_name": "SubagentStop", "agent_id": "abc"'
+  editor_held "$P"
+  [ -z "$(unity_log)" ]
+}
+
+test_exit_worktree_remove_closes() {
+  make_fixture; claude_wt e1; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "PreToolUse", "tool_name": "ExitWorktree", "tool_input": {"action": "remove"}'
+  refute editor_held "$W"
+}
+
+test_exit_worktree_keep_ignored() {
+  make_fixture; claude_wt e2; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "PreToolUse", "tool_name": "ExitWorktree", "tool_input": {"action": "keep"}'
+  editor_held "$W"
+}
+
+test_exit_worktree_save_fails_blocks() {
+  make_fixture; claude_wt e3; hold_editor "$W"; fake_unity save-fails
+  set +e
+  agent_hook "$W" '"hook_event_name": "PreToolUse", "tool_name": "ExitWorktree", "tool_input": {"action": "remove"}' 2> "$T/err"
+  rc=$?; set -e
+  cat "$T/err"
+  [ "$rc" = 2 ]
+  grep -qF "Could not close the Unity editor on $W" "$T/err"
+  editor_held "$W"
+}
+
+test_session_end_claude_worktree() {
+  make_fixture; claude_wt s1; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "SessionEnd", "reason": "other"'
+  wait_released "$W"
+}
+
+test_session_end_main_checkout() {
+  make_fixture; hold_editor "$P"; fake_unity
+  agent_hook "$P" '"hook_event_name": "SessionEnd", "reason": "other"'
+  sleep 1
+  editor_held "$P"
+  [ -z "$(unity_log)" ]
+}
+
+test_session_end_user_worktree() {
+  make_fixture
+  (cd "$P" && "$NEW" x)
+  W="$T/fake proj-x"; hold_editor "$W"; fake_unity
+  agent_hook "$W" '"hook_event_name": "SessionEnd", "reason": "other"'
+  sleep 1
+  editor_held "$W"
+  [ -z "$(unity_log)" ]
+}
+
 tests=${1:-$(declare -F | awk '$3 ~ /^test_/ {print $3}')}
 for t in $tests; do run_test "$t"; done
 exit $failed

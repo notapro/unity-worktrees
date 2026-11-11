@@ -34,6 +34,7 @@ Worktrees made by other tools (`git worktree add`, `claude --worktree`, other ag
 
 - Every `unity` CLI call must run with cwd inside the worktree or pass `--project-path <worktree>`. With two editors open a bare call fails with `AMBIGUOUS_EDITOR`.
 - Prefer batch mode (`unity test .`, `unity build .`) for verification; it needs no editor on that worktree. Open a GUI editor only for scene/prefab/play-mode work.
+- If you open a GUI editor on a worktree, save and close it when your work there is done: `~/.claude/unity-worktrees/skills/remove-unity-worktree/close-editor.sh <worktree>`. Hooks do this for Claude-created worktrees (`.claude/worktrees/`), not for others.
 - Never symlink `Library/`.
 - Give parallel agents disjoint scenes/prefabs; Unity YAML merges badly.
 - Clean up with `remove-unity-worktree`.
