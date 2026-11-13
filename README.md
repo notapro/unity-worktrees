@@ -16,7 +16,7 @@ Claude Code plugin for git worktrees of Unity projects. A plain `git worktree ad
   worktrees made outside Claude (`<repo>/.claude/worktrees/` only).
 - **`new-unity-worktree` skill**: creates a sibling worktree + branch, then seeds it.
 - **`remove-unity-worktree` skill**: removes a worktree and its branch; refuses on an open editor,
-  uncommitted changes or unmerged commits. Handles Claude's locked worktrees.
+  uncommitted changes, unmerged commits or a lock held by a live Claude process or anyone else.
 - **Unity CLI**, when installed: both skills go through `unity vcs git worktree add/remove`
   (editor-version check, Hub registration and removal). Without it they use plain git.
 - **`seed-worktree.sh`**: APFS-clones `Library/` (~4 s, ~free; falls back to reflink/plain copy),
@@ -41,12 +41,14 @@ other tools can use a path that survives plugin version bumps.
   Library; run `seed-worktree.sh` yourself.
 - Cloning a `Library/` while its editor is open is untested: `new-worktree.sh` refuses unless
   `--force`; the seeding hook only warns.
-- If saving fails (for example the editor is still loading or shows a modal dialog), the editor is
-  left open: `ExitWorktree` removal is refused, but a subagent or session end cannot be held, and
+- Saving writes each dirty scene to its own path; a dirty untitled scene is saved as
+  `Assets/Untitled.unity`, which then shows as uncommitted work. If saving fails (for example in play
+  mode, or a modal dialog is open), the editor is left open: `ExitWorktree` removal is refused, but a subagent or session end cannot be held, and
   Claude may then delete a subagent's worktree under the running editor. Close it with
-  `unity close <path>` (discards unsaved work).
+  `unity close <path>` (discards unsaved work). A project without `com.unity.pipeline` cannot be
+  saved through the CLI, so its editor is always left open.
 - `SessionEnd` from `/clear` is ignored, so the editor stays open while the session continues. Editors on worktrees made outside Claude must be closed by whoever
-  opened them.
+  opened them. An editor on a Claude-created worktree is closed whoever opened it.
 - `SubagentStart` cannot hold a subagent, so its first command may wait on the seeding lock.
 - Verified on macOS only for now (the APFS clone is macOS-specific; other platforms are untested).
 - Orca users: see [docs/orca.md](docs/orca.md) for the optional removal guard.

@@ -30,7 +30,10 @@ if command -v unity >/dev/null; then
   git -C "$src" branch "$name" "$base"
   # --seed full keeps PackageCache: first open measured ~2x faster than the default cache seed.
   unity vcs git worktree add "$name" "$src" --into "$dst" --seed full --non-interactive --no-banner --quiet \
-    || { rc=$?; git -C "$src" branch -D "$name" >/dev/null; exit "$rc"; }
+    || { rc=$?; git -C "$src" worktree remove --force "$dst" 2>/dev/null || true
+         git -C "$src" branch -D "$name" >/dev/null || true; exit "$rc"; }
+  # The CLI keeps these from the source editor's session; seed-worktree.sh skips its scrub when Library exists.
+  rm -rf "$dst/Library/Pipeline" "$dst/Library/Temp"
 else
   git -C "$src" worktree add -b "$name" "$dst" "$base"
 fi

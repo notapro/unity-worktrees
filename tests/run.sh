@@ -25,8 +25,9 @@ make_fixture() {
   git -C "$P" add -A && git -C "$P" commit -qm init
   if [ "${1:-}" != plain ]; then
     mkdir -p "$P/Library/PackageCache/p" "$P/Library/Artifacts"
+    mkdir -p "$P/Library/Pipeline" "$P/Library/Temp"
     touch "$P/Library/ilpp.pid" "$P/Library/ArtifactDB-lock" "$P/Library/SourceAssetDB-lock" \
-      "$P/Library/LastSceneManagerSetup.txt"
+      "$P/Library/LastSceneManagerSetup.txt" "$P/Library/Pipeline/port" "$P/Library/Temp/t"
     echo x > "$P/Library/PackageCache/p/x"
     echo y > "$P/Library/Artifacts/y"
   fi
@@ -43,6 +44,10 @@ release_editor() { [ ! -f "$T/editor.pid" ] || kill "$(cat "$T/editor.pid")" 2>/
 editor_held() { [ -n "$(lsof -t "$1/Temp/UnityLockfile" 2>/dev/null || true)" ]; }
 
 hook_json() { printf '{"session_id": "t", "cwd": "%s"%s}\n' "$1" "${2:+, $2}"; }
+
+# Exit code 77 marks a skip.
+need_unity() { command -v unity >/dev/null || { echo "Unity CLI not on PATH"; exit 77; }; }
+dead_pid() { sh -c 'echo $$'; }
 
 refute() { if "$@"; then echo "refute failed: $*" >&2; return 1; fi; }
 hub_has() { unity projects list --json 2>/dev/null | grep -qF "\"$1\""; }
@@ -70,7 +75,8 @@ failed=0
 check() {
   local name=$1; shift
   ( set -e; "$@" ) > "$LOGS/$name.log" 2>&1
-  if [ $? = 0 ]; then echo "ok $name"; else echo "FAIL $name"; sed 's/^/    /' "$LOGS/$name.log" | tail -20; failed=1; fi
+  local rc=$?
+  if [ $rc = 0 ]; then echo "ok $name"; elif [ $rc = 77 ]; then echo "skip $name"; else echo "FAIL $name"; sed 's/^/    /' "$LOGS/$name.log" | tail -20; failed=1; fi
 }
 run_test() { T=$(cd "$(mktemp -d)" && pwd -P); check "$1" "$1"; cleanup; }
 
@@ -84,6 +90,8 @@ test_seed_drops_session_files() {
   [ ! -e "$L/ilpp.pid" ]
   [ ! -e "$L/ArtifactDB-lock" ]
   [ ! -e "$L/SourceAssetDB-lock" ]
+  [ ! -e "$L/Pipeline" ]
+  [ ! -e "$L/Temp" ]
   [ -f "$L/LastSceneManagerSetup.txt" ]
   [ -f "$L/PackageCache/p/x" ]
   [ -f "$L/Artifacts/y" ]
@@ -102,10 +110,12 @@ BRANCH=w1" ]
   [ "$(git -C "$W" branch --show-current)" = w1 ]
   [ -f "$W/Library/PackageCache/p/x" ]
   [ ! -e "$W/Library/ilpp.pid" ]
+  [ ! -e "$W/Library/Pipeline" ]
+  [ ! -e "$W/Library/Temp" ]
   cmp "$P/Packages/manifest.json" "$W/Packages/manifest.json"
   cmp "$P/ProjectSettings/Probe.asset" "$W/ProjectSettings/Probe.asset"
 }
-test_new_with_unity() { new_worktree_common; hub_has "$W"; }
+test_new_with_unity() { need_unity; new_worktree_common; hub_has "$W"; }
 test_new_without_unity() { no_unity new_worktree_common; }
 
 test_new_base_ref() {
@@ -113,6 +123,18 @@ test_new_base_ref() {
   echo b > "$P/Assets/b.txt"; git -C "$P" add -A; git -C "$P" commit -qm second
   (cd "$P" && "$NEW" w2 --base HEAD~1)
   [ "$(git -C "$T/fake proj-w2" rev-parse HEAD)" = "$(git -C "$P" rev-parse HEAD~1)" ]
+}
+
+# A CLI failure after `worktree add` must leave no worktree or branch behind.
+test_new_cli_failure_cleans_up() {
+  make_fixture
+  mkdir -p "$T/bin"
+  printf '#!/bin/bash\ngit -C "$6" worktree add -q "$8" "$5"; exit 3\n' > "$T/bin/unity"
+  chmod +x "$T/bin/unity"
+  set +e; (cd "$P" && PATH="$T/bin:$PATH" "$NEW" w4); rc=$?; set -e
+  [ "$rc" = 3 ]
+  [ ! -e "$T/fake proj-w4" ]
+  refute git -C "$P" rev-parse -q --verify refs/heads/w4
 }
 
 test_new_existing_branch_refused() {
@@ -134,7 +156,7 @@ remove_seeded_common() {
   [ ! -e "$W" ]
   refute git -C "$P" rev-parse -q --verify refs/heads/r1
 }
-test_remove_seeded_only() { remove_seeded_common; refute hub_has "$W"; }
+test_remove_seeded_only() { need_unity; remove_seeded_common; refute hub_has "$W"; }
 test_remove_without_unity() { no_unity remove_seeded_common; }
 
 test_remove_real_edit_refused() {
@@ -158,6 +180,27 @@ test_remove_unmerged_refused() {
   refute git -C "$P" rev-parse -q --verify refs/heads/r3
 }
 
+# Commits kept on another branch are safe, so the branch goes even though -d would refuse it.
+test_remove_commits_on_other_branch() {
+  make_fixture
+  (cd "$P" && "$NEW" r7)
+  echo c > "$T/fake proj-r7/Assets/c.txt"
+  git -C "$T/fake proj-r7" add Assets/c.txt; git -C "$T/fake proj-r7" commit -qm c
+  git -C "$P" branch keep r7
+  (cd "$P" && "$REMOVE" r7)
+  refute git -C "$P" rev-parse -q --verify refs/heads/r7
+}
+
+test_remove_ambiguous_refused() {
+  make_fixture
+  git -C "$P" worktree add -q "$T/x" -b other
+  git -C "$P" worktree add -q "$T/y" -b x
+  set +e; (cd "$P" && "$REMOVE" x); rc=$?; set -e
+  [ "$rc" = 2 ]
+  [ -d "$T/x" ]
+  [ -d "$T/y" ]
+}
+
 test_remove_plain_worktree() {
   make_fixture
   git -C "$P" worktree add -q "$T/fake proj-r4" -b r4
@@ -169,10 +212,24 @@ test_remove_locked() {
   make_fixture
   W="$P/.claude/worktrees/r5"
   git -C "$P" worktree add -q "$W" -b worktree-r5
-  git -C "$P" worktree lock "$W"
+  git -C "$P" worktree lock --reason "claude agent a1 (pid $(dead_pid) start 1)" "$W"
   (cd "$P" && "$REMOVE" r5)
   [ ! -e "$W" ]
   refute git -C "$P" rev-parse -q --verify refs/heads/worktree-r5
+}
+
+test_remove_live_or_foreign_lock_refused() {
+  make_fixture
+  W="$P/.claude/worktrees/r8"
+  git -C "$P" worktree add -q "$W" -b worktree-r8
+  git -C "$P" worktree lock --reason "claude session s1 (pid $$ start 1)" "$W"
+  refute bash -c 'cd "$1" && "$2" r8' _ "$P" "$REMOVE"
+  git -C "$P" worktree unlock "$W"
+  git -C "$P" worktree lock --reason mine "$W"
+  refute bash -c 'cd "$1" && "$2" r8' _ "$P" "$REMOVE"
+  [ -d "$W" ]
+  (cd "$P" && "$REMOVE" r8 --force)
+  [ ! -e "$W" ]
 }
 
 # --- Task 4 ---
@@ -227,6 +284,31 @@ test_seed_hook_noop_seeded() {
   echo marker > "$W/Library/marker"
   assert_fast_noop "$W"
   [ -f "$W/Library/marker" ]
+}
+
+# Re-seeding (Library deleted) must not overwrite Packages/ edits made in the worktree.
+test_seed_hook_keeps_worktree_edits() {
+  make_fixture
+  echo '{"dependencies":{"x":"1"}}' > "$P/Packages/manifest.json"
+  claude_wt h7
+  seed_hook "$W"
+  echo '{"dependencies":{"mine":"1"}}' > "$W/Packages/manifest.json"
+  rm -rf "$W/Library"
+  seed_hook "$W"
+  grep -q mine "$W/Packages/manifest.json"
+  [ -f "$W/Library/PackageCache/p/x" ]
+}
+
+# A lock left by a killed seeder must not stall the next one.
+test_seed_dead_pid_lock() {
+  make_fixture; claude_wt h8
+  lock="$(git -C "$W" rev-parse --absolute-git-dir)/unity-seeding.lock"
+  mkdir "$lock"; dead_pid > "$lock/pid"
+  t0=$(date +%s)
+  "$SEED" "$W" "$P"
+  [ $(( $(date +%s) - t0 )) -lt 10 ]
+  [ -f "$W/Library/PackageCache/p/x" ]
+  [ ! -e "$lock" ]
 }
 
 test_seed_hook_concurrent() {
@@ -292,7 +374,7 @@ test_close_editor_saves_then_closes() {
   "$CLOSE" "$W"
   unity_log
   [ "$(unity_log | sed -n 1p | grep -F "$W" | cut -d' ' -f1-2)" = "command eval" ]
-  [ "$(unity_log | sed -n 2p)" = "close $W --non-interactive --no-banner" ]
+  [ "$(unity_log | tail -1)" = "close $W --non-interactive --no-banner" ]
   refute editor_held "$W"
 }
 
@@ -314,9 +396,9 @@ test_remove_force_closes_editor() {
   git -C "$P" worktree add -q "$T/fake proj-r6" -b r6
   hold_editor "$T/fake proj-r6"; fake_unity
   (cd "$P" && "$REMOVE" r6 --force)
-  unity_log | grep -n -e '^command eval' -e '^close' > "$T/order"
-  [ "$(cut -d: -f2 "$T/order" | cut -d' ' -f1)" = "command
-close" ]
+  # --force discards the worktree, so it skips the save that play mode or a dialog could fail.
+  refute grep -q '^command eval' "$T/unity.log"
+  grep -q '^close' "$T/unity.log"
   [ ! -e "$T/fake proj-r6" ]
 }
 

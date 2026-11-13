@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# usage: close-editor.sh <worktree>
+# usage: close-editor.sh <worktree> [--discard]
 # Saves open scenes and assets in the Unity editor on <worktree>, then closes it.
+# --discard skips the save, for a worktree about to be deleted anyway.
 # Exit 0 if no editor is open or it closed; 1 (reason on stderr) if it is still open.
 set -euo pipefail
 
@@ -11,8 +12,16 @@ here=$(dirname "$0")
 command -v unity >/dev/null || { echo "Unity CLI not found, so the editor on $wt cannot be closed" >&2; exit 1; }
 
 # `unity close` exits without saving, so never close after a failed save.
-unity command eval --project-path "$wt" --caller agent --skill unity-cli --result-only \
-  'UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes(); UnityEditor.AssetDatabase.SaveAssets(); return 0;' \
+# Not SaveOpenScenes(): it opens a Save dialog for an untitled scene, which blocks the eval.
+# A dirty untitled scene is saved under Assets/ instead; a clean one has nothing to keep.
+[ "${2:-}" = --discard ] || unity command eval --project-path "$wt" --caller agent --skill unity-cli --result-only '
+  for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++) {
+    var s = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+    if (!s.isDirty) continue;
+    var p = s.path != "" ? s.path : UnityEditor.AssetDatabase.GenerateUniqueAssetPath("Assets/Untitled.unity");
+    if (!UnityEditor.SceneManagement.EditorSceneManager.SaveScene(s, p)) throw new System.Exception("could not save " + p);
+  }
+  UnityEditor.AssetDatabase.SaveAssets(); return 0;' \
   >/dev/null || { echo "saving the editor on $wt failed; left it open" >&2; exit 1; }
 unity close "$wt" --non-interactive --no-banner >/dev/null || true
 

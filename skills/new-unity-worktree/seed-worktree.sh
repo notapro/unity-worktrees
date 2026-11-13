@@ -23,28 +23,37 @@ lock="$gitdir/unity-seeding.lock"
 tmp="$dst/Library.seeding"
 waited=0
 until mkdir "$lock" 2>/dev/null; do
-  if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+  # The holder writes its pid right after mkdir; with no pid yet, only age marks the lock stale.
+  holder=$(cat "$lock/pid" 2>/dev/null || true)
+  if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
+     || { [ -z "$holder" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; }; then
     echo "removing stale seeding lock $lock" >&2; rm -rf "$lock"; continue
   fi
   [ "$waited" -lt 120 ] || { echo "timed out waiting for another seeder ($lock)" >&2; exit 1; }
   waited=$((waited + 1)); sleep 1
 done
-trap 'rm -rf "$tmp"; rmdir "$lock" 2>/dev/null' EXIT
+echo $$ > "$lock/pid"
+trap 'rm -rf "$tmp" "$lock"' EXIT
 # The seeder we waited for finished the job.
 [ "$waited" = 0 ] || [ ! -e "$dst/Library" ] || exit 0
 
 seeded="$gitdir/unity-seeded"
-: > "$seeded"
-# Overlaying the source's uncommitted manifest onto a different base commit could break the project.
-if git -C "$src" diff --quiet HEAD "$(git -C "$dst" rev-parse HEAD)" -- Packages ProjectSettings; then
-  while IFS= read -r f; do
-    [ -f "$src/$f" ] || continue
-    mkdir -p "$dst/$(dirname "$f")"
-    cp "$src/$f" "$dst/$f"
-    echo "$f" >> "$seeded"
-  done < <(git -C "$src" ls-files -m -o --exclude-standard -- Packages ProjectSettings)
+# Copy files once per worktree: a re-seed (e.g. after Library is deleted) must not overwrite edits made here.
+if [ -e "$seeded" ]; then
+  echo "Packages/ProjectSettings already seeded; not copying them again" >&2
 else
-  echo "base's Packages/ProjectSettings differ from $src HEAD; skipping their seeding" >&2
+  : > "$seeded"
+  # Overlaying the source's uncommitted manifest onto a different base commit could break the project.
+  if git -C "$src" diff --quiet HEAD "$(git -C "$dst" rev-parse HEAD)" -- Packages ProjectSettings; then
+    while IFS= read -r f; do
+      [ -f "$src/$f" ] || continue
+      mkdir -p "$dst/$(dirname "$f")"
+      cp "$src/$f" "$dst/$f"
+      echo "$f" >> "$seeded"
+    done < <(git -C "$src" ls-files -m -o --exclude-standard -- Packages ProjectSettings)
+  else
+    echo "base's Packages/ProjectSettings differ from $src HEAD; skipping their seeding" >&2
+  fi
 fi
 
 if [ -e "$dst/Library" ]; then
