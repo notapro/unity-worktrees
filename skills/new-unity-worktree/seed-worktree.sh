@@ -22,17 +22,19 @@ gitdir=$(git -C "$dst" rev-parse --absolute-git-dir)
 lock="$gitdir/unity-seeding.lock"
 tmp="$dst/Library.seeding"
 waited=0
+# pid plus start time, so a reused pid does not look like the seeder that took the lock.
+proc_id() { echo "$1 $(ps -o lstart= -p "$1" 2>/dev/null || true)"; }
 until mkdir "$lock" 2>/dev/null; do
-  # The holder writes its pid right after mkdir; with no pid yet, only age marks the lock stale.
+  # The holder writes its id right after mkdir; with no id yet, only age marks the lock stale.
   holder=$(cat "$lock/pid" 2>/dev/null || true)
-  if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
+  if { [ -n "$holder" ] && [ "$(proc_id "${holder%% *}")" != "$holder" ]; } \
      || { [ -z "$holder" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; }; then
     echo "removing stale seeding lock $lock" >&2; rm -rf "$lock"; continue
   fi
   [ "$waited" -lt 120 ] || { echo "timed out waiting for another seeder ($lock)" >&2; exit 1; }
   waited=$((waited + 1)); sleep 1
 done
-echo $$ > "$lock/pid"
+proc_id $$ > "$lock/pid"
 trap 'rm -rf "$tmp" "$lock"' EXIT
 # The seeder we waited for finished the job.
 [ "$waited" = 0 ] || [ ! -e "$dst/Library" ] || exit 0

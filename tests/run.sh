@@ -311,6 +311,17 @@ test_seed_dead_pid_lock() {
   [ ! -e "$lock" ]
 }
 
+# A live process that reused the dead seeder's pid must not hold the lock.
+test_seed_reused_pid_lock() {
+  make_fixture; claude_wt h9
+  lock="$(git -C "$W" rev-parse --absolute-git-dir)/unity-seeding.lock"
+  mkdir "$lock"; echo "$$ Thu Jan  1 00:00:00 1970" > "$lock/pid"
+  t0=$(date +%s)
+  "$SEED" "$W" "$P"
+  [ $(( $(date +%s) - t0 )) -lt 10 ]
+  [ -f "$W/Library/PackageCache/p/x" ]
+}
+
 test_seed_hook_concurrent() {
   make_fixture; claude_wt h4
   (cd "$W" && hook_json "$W" | HOME="$T/home" CLAUDE_PLUGIN_ROOT="$here" "$here/hooks/seed-if-needed.sh") & a=$!
@@ -392,6 +403,7 @@ test_close_editor_no_editor() {
 }
 
 test_remove_force_closes_editor() {
+  need_unity
   make_fixture
   git -C "$P" worktree add -q "$T/fake proj-r6" -b r6
   hold_editor "$T/fake proj-r6"; fake_unity
