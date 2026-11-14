@@ -2,7 +2,7 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [1.1.0] - 2026-11-11
+## [1.1.0] - 2026-11-14
 
 ### Added
 - Worktree seeding hooks: `seed-if-needed.sh` on SessionStart, `EnterWorktree`, SubagentStart and a Bash backstop, with a lock so concurrent seeders produce one complete Library.
