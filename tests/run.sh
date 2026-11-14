@@ -411,6 +411,21 @@ test_subagent_stop_own_worktree() {
   refute editor_held "$W"
 }
 
+# Subagent and session ends cannot be held, so an editor that will not save is force-quit.
+test_subagent_stop_save_fails_force_quits() {
+  make_fixture; claude_wt agent-def; hold_editor "$W"; fake_unity save-fails
+  agent_hook "$W" '"hook_event_name": "SubagentStop", "agent_id": "def"'
+  grep -qx "close $W --non-interactive --no-banner --force" "$T/unity.log"
+  refute editor_held "$W"
+}
+
+test_session_end_save_fails_force_quits() {
+  make_fixture; claude_wt s3; hold_editor "$W"; fake_unity save-fails
+  agent_hook "$W" '"hook_event_name": "SessionEnd", "reason": "other"'
+  wait_released "$W"
+  grep -qx "close $W --non-interactive --no-banner --force" "$T/unity.log"
+}
+
 test_subagent_stop_shared_worktree() {
   make_fixture; claude_wt t1; hold_editor "$W"; fake_unity
   agent_hook "$W" '"hook_event_name": "SubagentStop", "agent_id": "abc"'
@@ -460,15 +475,16 @@ test_session_end_clear_ignored() {
 }
 
 # The hook must outlive close-editor.sh's worst case (save + 30 s `unity close` + 90 s poll),
-# or Claude kills it and ExitWorktree removes the worktree under a running editor.
+# or Claude kills it and ExitWorktree removes the worktree under a running editor. SubagentStop
+# then force-quits (another 30 s close + poll), so it needs more.
 test_close_hook_timeout_covers_close() {
   python3 - "$here/hooks/hooks.json" <<'EOF'
 import json, sys
-for groups in json.load(open(sys.argv[1]))["hooks"].values():
+for event, groups in json.load(open(sys.argv[1]))["hooks"].items():
     for g in groups:
         for h in g["hooks"]:
             if "close-agent-editor" in h["command"]:
-                assert h["timeout"] >= 180, h
+                assert h["timeout"] >= (270 if event == "SubagentStop" else 180), (event, h)
 EOF
 }
 

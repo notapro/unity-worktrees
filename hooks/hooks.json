@@ -69,7 +69,7 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/close-agent-editor.sh\"",
             "shell": "bash",
-            "timeout": 180
+            "timeout": 300
           }
         ]
       }

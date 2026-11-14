@@ -2,7 +2,8 @@
 # Saves and closes a Unity editor on a Claude-created worktree (<main>/.claude/worktrees/*)
 # when the agent's work there ends: SubagentStop for the subagent's own isolated worktree,
 # PreToolUse ExitWorktree when it removes the worktree, and SessionEnd. Never touches the main
-# checkout or worktrees made outside Claude. Only a failed ExitWorktree close blocks (exit 2).
+# checkout or worktrees made outside Claude. Only a failed ExitWorktree close blocks (exit 2);
+# subagent and session ends cannot be held, so an editor that will not save is force-quit there.
 exec >&2
 # \x1f, not tab: read collapses runs of whitespace separators, dropping empty fields.
 IFS=$'\x1f' read -r event cwd agent action reason < <(python3 -c '
@@ -19,7 +20,7 @@ case $root in "$main/.claude/worktrees/"*) ;; *) exit 0;; esac
 case $event in
   SubagentStop)
     [ "$(basename "$root")" = "agent-$agent" ] || exit 0
-    "$close" "$root" || true;;
+    "$close" "$root" || "$close" "$root" --discard || true;;
   PreToolUse)
     [ "$action" = remove ] || exit 0
     if ! reason=$("$close" "$root" 2>&1); then
@@ -30,6 +31,6 @@ case $event in
     # /clear also ends a session, but work goes on in the same worktree.
     [ "$reason" != clear ] || exit 0
     # Claude cancels SessionEnd hooks within seconds; let the close outlive this hook.
-    nohup "$close" "$root" >/dev/null 2>&1 &;;
+    nohup bash -c '"$0" "$1" || "$0" "$1" --discard' "$close" "$root" >/dev/null 2>&1 &;;
 esac
 exit 0

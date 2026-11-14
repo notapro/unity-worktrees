@@ -42,11 +42,10 @@ other tools can use a path that survives plugin version bumps.
 - Cloning a `Library/` while its editor is open is untested: `new-worktree.sh` refuses unless
   `--force`; the seeding hook only warns.
 - Saving writes each dirty scene to its own path; a dirty untitled scene is saved as
-  `Assets/Untitled.unity`, which then shows as uncommitted work. If saving fails (for example in play
-  mode, or a modal dialog is open), the editor is left open: `ExitWorktree` removal is refused, but a subagent or session end cannot be held, and
-  Claude may then delete a subagent's worktree under the running editor. Close it with
-  `unity close <path>` (discards unsaved work). A project without `com.unity.pipeline` cannot be
-  saved through the CLI, so its editor is always left open.
+  `Assets/Untitled.unity`, which then shows as uncommitted work. If saving fails (play mode, a
+  modal dialog, or a project without `com.unity.pipeline`), `ExitWorktree` removal is refused so
+  you can save by hand; a subagent or session end cannot be held, so the editor is force-quit
+  (`unity close --force`) and its unsaved work is lost.
 - `SessionEnd` from `/clear` is ignored, so the editor stays open while the session continues. Editors on worktrees made outside Claude must be closed by whoever
   opened them. An editor on a Claude-created worktree is closed whoever opened it.
 - `SubagentStart` cannot hold a subagent, so its first command may wait on the seeding lock.

@@ -6,8 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 - Worktree seeding hooks: `seed-if-needed.sh` on SessionStart, `EnterWorktree`, SubagentStart and a Bash backstop, with a lock so concurrent seeders produce one complete Library.
-- Agent editor closing: `close-agent-editor.sh` saves and closes a Unity editor on a Claude-created worktree when a subagent finishes there, `ExitWorktree` removes it, or the session ends.
-- `close-editor.sh`: save each dirty scene (an untitled one as `Assets/Untitled.unity`, so no Save dialog blocks), then close the editor on a worktree.
+- Agent editor closing: `close-agent-editor.sh` saves and closes a Unity editor on a Claude-created worktree when a subagent finishes there, `ExitWorktree` removes it, or the session ends. When saving fails, `ExitWorktree` is refused and subagent or session ends force-quit the editor.
+- `close-editor.sh`: save each dirty scene (an untitled one as `Assets/Untitled.unity`, so no Save dialog blocks), then close the editor on a worktree; `--discard` skips the save and force-quits.
 - Tests: `bash tests/run.sh`.
 
 ### Changed

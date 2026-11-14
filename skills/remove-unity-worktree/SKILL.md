@@ -25,7 +25,7 @@ The script refuses (exit 2) and prints why when:
 
 On a refusal, show the user the reason and ask. Merge or commit first if they want the work kept.
 
-`--force` closes the editor without saving (`close-editor.sh --discard`), unlocks the worktree, discards uncommitted changes and unmerged commits, and deletes the branch. Use it only when the user has said to discard the work.
+`--force` closes the editor without saving, force-quitting it if needed (`close-editor.sh --discard`), unlocks the worktree, discards uncommitted changes and unmerged commits, and deletes the branch. Use it only when the user has said to discard the work.
 
 Claude's own worktrees (`.claude/worktrees/<name>`) are unlocked and removed like any other once the Claude process holding the lock has exited. With the Unity CLI installed, removal goes through `unity vcs git worktree remove`, which also drops the Hub row.
 
