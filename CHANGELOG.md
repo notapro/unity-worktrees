@@ -19,7 +19,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Fixed
 - Re-seeding a worktree (for example after deleting its `Library/`) no longer overwrites its `Packages/`/`ProjectSettings/` edits.
 - A seeding lock left by a killed seeder is reclaimed at once instead of stalling each Bash call.
-- `new-worktree.sh` removes the half-made worktree and branch when the Unity CLI fails, and drops the copied `Library/Pipeline` and `Library/Temp`.
+- `new-worktree.sh` removes the half-made worktree and branch when the Unity CLI fails, drops the copied `Library/Pipeline` and `Library/Temp`, and keeps `Library/LastSceneManagerSetup.txt` so the worktree opens on the source's scene.
 
 ## [1.0.0] - 2026-11-05
 

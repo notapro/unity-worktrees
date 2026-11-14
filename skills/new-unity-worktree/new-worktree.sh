@@ -34,6 +34,8 @@ if command -v unity >/dev/null; then
          git -C "$src" branch -D "$name" >/dev/null || true; exit "$rc"; }
   # The CLI keeps these from the source editor's session; seed-worktree.sh skips its scrub when Library exists.
   rm -rf "$dst/Library/Pipeline" "$dst/Library/Temp"
+  # The CLI seed drops this, so the editor would open an untitled scene instead of the source's.
+  cp "$src/Library/LastSceneManagerSetup.txt" "$dst/Library/" 2>/dev/null || true
 else
   git -C "$src" worktree add -b "$name" "$dst" "$base"
 fi

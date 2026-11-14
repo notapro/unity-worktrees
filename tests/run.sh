@@ -112,6 +112,7 @@ BRANCH=w1" ]
   [ ! -e "$W/Library/ilpp.pid" ]
   [ ! -e "$W/Library/Pipeline" ]
   [ ! -e "$W/Library/Temp" ]
+  [ -f "$W/Library/LastSceneManagerSetup.txt" ]
   cmp "$P/Packages/manifest.json" "$W/Packages/manifest.json"
   cmp "$P/ProjectSettings/Probe.asset" "$W/ProjectSettings/Probe.asset"
 }
