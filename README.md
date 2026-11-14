@@ -5,15 +5,25 @@ Claude Code plugin for git worktrees of Unity projects. A plain `git worktree ad
 
 ## What it does
 
-- **SessionStart hook** (`hooks/session-start.sh`): when a session opens in a *linked* Unity worktree
-  with no `Library/`, runs `seed-worktree.sh`. Works for worktrees from any tool, with no per-repo
-  config and nothing committed.
+- **Seeding hook** (`hooks/seed-if-needed.sh`): when Claude is working in a *linked* Unity worktree
+  with no `Library/`, runs `seed-worktree.sh`. Fires on session start (`claude --worktree`, Orca,
+  plain `git worktree add`), after `EnterWorktree`, on subagent start (`isolation: "worktree"`), and
+  before each Bash call as a backstop (a no-op in ~10-25 ms once seeded). It only observes: Claude
+  still creates and removes its worktrees itself.
+- **Editor-closing hook** (`hooks/close-agent-editor.sh`): when a subagent finishes in its isolated
+  worktree, `ExitWorktree` removes a worktree, or a session in a Claude-created worktree ends, an
+  open Unity editor there is saved and closed (`close-editor.sh`). Never on the main project or on
+  worktrees made outside Claude (`<repo>/.claude/worktrees/` only).
 - **`new-unity-worktree` skill**: creates a sibling worktree + branch, then seeds it.
 - **`remove-unity-worktree` skill**: removes a worktree and its branch; refuses on an open editor,
-  uncommitted changes or unmerged commits.
+  uncommitted changes, unmerged commits or a lock held by a live Claude process or anyone else.
+- **Unity CLI**, when installed: both skills go through `unity vcs git worktree add/remove`
+  (editor-version check, Hub registration and removal). Without it they use plain git.
 - **`seed-worktree.sh`**: APFS-clones `Library/` (~4 s, ~free; falls back to reflink/plain copy),
-  deletes `Library/Pipeline` (stale CLI port/token), copies uncommitted `Packages/`+`ProjectSettings/`
-  files when the base's copies match the source's HEAD. No-op outside Unity projects.
+  copies uncommitted `Packages/`+`ProjectSettings/` files when the base's copies match the source's
+  HEAD. Drops the source editor's session files (`Pipeline/`, `ilpp.pid`, `*-lock`) but keeps
+  `PackageCache/`: a full Library measured ~2x faster first open than Unity's default
+  `--seed cache`. No-op outside Unity projects.
 
 ## Install
 
@@ -30,9 +40,21 @@ other tools can use a path that survives plugin version bumps.
 - Opening Unity by hand in an unseeded worktree, with no Claude session started there, gets no
   Library; run `seed-worktree.sh` yourself.
 - Cloning a `Library/` while its editor is open is untested: `new-worktree.sh` refuses unless
-  `--force`; the SessionStart hook only warns.
+  `--force`; the seeding hook only warns.
+- Saving writes each dirty scene to its own path; a dirty untitled scene is saved as
+  `Assets/Untitled.unity`, which then shows as uncommitted work. If saving fails (play mode, a
+  modal dialog, or a project without `com.unity.pipeline`), `ExitWorktree` removal is refused so
+  you can save by hand; a subagent or session end cannot be held, so the editor is force-quit
+  (`unity close --force`) and its unsaved work is lost.
+- `SessionEnd` from `/clear` is ignored, so the editor stays open while the session continues. Editors on worktrees made outside Claude must be closed by whoever
+  opened them. An editor on a Claude-created worktree is closed whoever opened it.
+- `SubagentStart` cannot hold a subagent, so its first command may wait on the seeding lock.
 - Verified on macOS only for now (the APFS clone is macOS-specific; other platforms are untested).
 - Orca users: see [docs/orca.md](docs/orca.md) for the optional removal guard.
+
+## Tests
+
+`bash tests/run.sh [test_name]` (macOS; tests that need the Unity CLI register and remove Hub rows).
 
 ## License
 

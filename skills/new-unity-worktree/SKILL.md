@@ -17,13 +17,14 @@ From the Unity project (any directory inside it), with the Unity editor closed:
 
 - Creates sibling dir `<repo>-<name>` on new branch `<name>`, from `--base` (default `HEAD`).
 - Copies modified/untracked files under `Packages/` and `ProjectSettings/` into it (not `Assets/`).
-- Clones `Library/` (~4 s, ~free on APFS), then deletes `Library/Pipeline` so the Unity CLI cannot route to the source project.
+- With the Unity CLI installed, creates it via `unity vcs git worktree add --seed full` (checks the editor version, registers it in the Hub); otherwise plain `git worktree add`.
+- Clones `Library/` (~4 s, ~free on APFS) without the source editor's session files (`Pipeline/`, `ilpp.pid`, `*-lock`), so the Unity CLI cannot route to the source project.
 - Refuses if an editor holds the source's `Temp/UnityLockfile`; `--force` overrides (cloning a live Library is untested).
 - Last output lines: `WORKTREE=<path>` and `BRANCH=<name>`.
 
 If the user gave no name, derive a short kebab-case one from the task. Do not ask.
 
-Worktrees made by other tools (`git worktree add`, `claude --worktree`, other agents) are seeded by the plugin's SessionStart hook when a session starts in them; this skill is for creating one on request.
+Worktrees made by other tools are seeded automatically by the plugin's hooks: `claude --worktree`, `EnterWorktree`, subagents with `isolation: "worktree"`, Orca, plain `git worktree add`. This skill is for creating one on request.
 
 ## Then
 
@@ -34,6 +35,7 @@ Worktrees made by other tools (`git worktree add`, `claude --worktree`, other ag
 
 - Every `unity` CLI call must run with cwd inside the worktree or pass `--project-path <worktree>`. With two editors open a bare call fails with `AMBIGUOUS_EDITOR`.
 - Prefer batch mode (`unity test .`, `unity build .`) for verification; it needs no editor on that worktree. Open a GUI editor only for scene/prefab/play-mode work.
+- If you open a GUI editor on a worktree, save and close it when your work there is done: `~/.claude/unity-worktrees/skills/remove-unity-worktree/close-editor.sh <worktree>`. Hooks do this for Claude-created worktrees (`.claude/worktrees/`), not for others.
 - Never symlink `Library/`.
 - Give parallel agents disjoint scenes/prefabs; Unity YAML merges badly.
 - Clean up with `remove-unity-worktree`.

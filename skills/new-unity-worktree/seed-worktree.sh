@@ -17,18 +17,45 @@ if [ -n "$(lsof -t "$src/Temp/UnityLockfile" 2>/dev/null || true)" ]; then
   echo "warning: editor is open on $src; cloning its live Library (untested, Unity reimports if inconsistent)" >&2
 fi
 
-seeded="$(git -C "$dst" rev-parse --absolute-git-dir)/unity-seeded"
-: > "$seeded"
-# Overlaying the source's uncommitted manifest onto a different base commit could break the project.
-if git -C "$src" diff --quiet HEAD "$(git -C "$dst" rev-parse HEAD)" -- Packages ProjectSettings; then
-  while IFS= read -r f; do
-    [ -f "$src/$f" ] || continue
-    mkdir -p "$dst/$(dirname "$f")"
-    cp "$src/$f" "$dst/$f"
-    echo "$f" >> "$seeded"
-  done < <(git -C "$src" ls-files -m -o --exclude-standard -- Packages ProjectSettings)
+gitdir=$(git -C "$dst" rev-parse --absolute-git-dir)
+# The Bash backstop hook and SubagentStart can fire together; one seeder at a time.
+lock="$gitdir/unity-seeding.lock"
+tmp="$dst/Library.seeding"
+waited=0
+# pid plus start time, so a reused pid does not look like the seeder that took the lock.
+proc_id() { echo "$1 $(ps -o lstart= -p "$1" 2>/dev/null || true)"; }
+until mkdir "$lock" 2>/dev/null; do
+  # The holder writes its id right after mkdir; with no id yet, only age marks the lock stale.
+  holder=$(cat "$lock/pid" 2>/dev/null || true)
+  if { [ -n "$holder" ] && [ "$(proc_id "${holder%% *}")" != "$holder" ]; } \
+     || { [ -z "$holder" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; }; then
+    echo "removing stale seeding lock $lock" >&2; rm -rf "$lock"; continue
+  fi
+  [ "$waited" -lt 120 ] || { echo "timed out waiting for another seeder ($lock)" >&2; exit 1; }
+  waited=$((waited + 1)); sleep 1
+done
+proc_id $$ > "$lock/pid"
+trap 'rm -rf "$tmp" "$lock"' EXIT
+# The seeder we waited for finished the job.
+[ "$waited" = 0 ] || [ ! -e "$dst/Library" ] || exit 0
+
+seeded="$gitdir/unity-seeded"
+# Copy files once per worktree: a re-seed (e.g. after Library is deleted) must not overwrite edits made here.
+if [ -e "$seeded" ]; then
+  echo "Packages/ProjectSettings already seeded; not copying them again" >&2
 else
-  echo "base's Packages/ProjectSettings differ from $src HEAD; skipping their seeding" >&2
+  : > "$seeded"
+  # Overlaying the source's uncommitted manifest onto a different base commit could break the project.
+  if git -C "$src" diff --quiet HEAD "$(git -C "$dst" rev-parse HEAD)" -- Packages ProjectSettings; then
+    while IFS= read -r f; do
+      [ -f "$src/$f" ] || continue
+      mkdir -p "$dst/$(dirname "$f")"
+      cp "$src/$f" "$dst/$f"
+      echo "$f" >> "$seeded"
+    done < <(git -C "$src" ls-files -m -o --exclude-standard -- Packages ProjectSettings)
+  else
+    echo "base's Packages/ProjectSettings differ from $src HEAD; skipping their seeding" >&2
+  fi
 fi
 
 if [ -e "$dst/Library" ]; then
@@ -37,13 +64,13 @@ elif [ -d "$src/Library" ]; then
   # APFS clone is ~4s and ~free for a 6.7 GB Library; fall back to reflink, then a plain copy.
   # Clone beside the target and rename at the end, so an interrupted copy or a second seeder
   # never leaves a half-filled Library that Unity would trust.
-  tmp="$dst/Library.seeding"
   rm -rf "$tmp"
   cp -cR "$src/Library" "$tmp" 2>/dev/null \
     || { rm -rf "$tmp"; cp -R --reflink=auto "$src/Library" "$tmp" 2>/dev/null; } \
     || { rm -rf "$tmp"; cp -R "$src/Library" "$tmp"; }
-  # Pipeline/ holds the source editor's port, pid and token; a stale copy can misroute the CLI.
-  rm -rf "$tmp/Pipeline" "$tmp/Temp"
+  # These belong to the source editor's session (Pipeline/ holds its port, pid and token);
+  # a stale copy can misroute the CLI or look like a live editor.
+  rm -rf "$tmp/Pipeline" "$tmp/Temp" "$tmp/ilpp.pid" "$tmp"/*-lock
   mv "$tmp" "$dst/Library"
 else
   echo "warning: no Library in $src; first open will do a full import" >&2
